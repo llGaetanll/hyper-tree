@@ -1,0 +1,12 @@
+[package]
+name = "hyper-tree"
+version = "0.2.0"
+edition = "2024"
+authors = ["Gaetan Almela <gaetan.almela@gmail.com>"]
+description = "Quadtrees and Octrees generalized to any dimension and type"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+
+[dev-dependencies]
+proptest = "1.7"
