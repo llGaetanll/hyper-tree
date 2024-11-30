@@ -256,3 +256,27 @@ impl<T, const N: usize> Tree<T, N> {
         self.partition_tree(rngs, mid, rng_lo + i / 2, i - 1, m..hi);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::ops::Range;
+
+    use super::Point;
+    use super::Tree;
+
+    fn p2s(ps: &[[i32; 2]]) -> Vec<Point<i32, 2>> {
+        ps.iter().map(|&p| Point(p)).collect()
+    }
+
+    fn range2(xs: Range<i32>, ys: Range<i32>) -> Vec<Point<i32, 2>> {
+        xs.flat_map(|x| ys.clone().map(move |y| Point([x, y])))
+            .collect()
+    }
+
+    #[test]
+    fn no_panic() {
+        Tree::new(p2s(&[[0, 0]]));
+        Tree::new(p2s(&[[0, 0], [0, 1], [1, 0], [1, 1]]));
+        Tree::new(range2(-5..5, -5..5)).unwrap();
+    }
+}
