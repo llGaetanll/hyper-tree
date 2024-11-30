@@ -2,7 +2,7 @@
 
 A zero-cost generalization over quadtrees and octrees that store points.
 
-- No dependecies!
+- No dependencies!
 - 100% safe code
 - Small footprint
 
