@@ -36,3 +36,60 @@ where
         lo
     }
 }
+
+#[cfg(test)]
+mod tests {
+    fn test_list(input: &mut [i32], output: &[i32], exp: usize) {
+        let idx = super::partition_in_place(input, |&x| x < 10);
+
+        assert_eq!(input, output);
+        assert_eq!(idx, exp);
+    }
+
+    #[test]
+    fn empty() {
+        test_list(&mut [], &[], 0);
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn one() {
+        test_list(&mut [0],  &[0],  1);
+        test_list(&mut [10], &[10], 0);
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn two() {
+        test_list(&mut [0, 10],  &[0, 10],  1);
+        test_list(&mut [0, 1],   &[0, 1],   2);
+        test_list(&mut [10, 11], &[10, 11], 0);
+        test_list(&mut [10, 0],  &[0, 10],  1);
+        test_list(&mut [1, 0],   &[1, 0],   2);
+        test_list(&mut [11, 10], &[11, 10], 0);
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn three() {
+        test_list(&mut [0, 1, 2],   &[0, 1, 2],   3);
+        test_list(&mut [0, 1, 10],  &[0, 1, 10],  2);
+        test_list(&mut [0, 10, 11], &[0, 10, 11], 1);
+        test_list(&mut [10, 11, 12], &[10, 11, 12], 0);
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn misc() {
+        test_list(
+            &mut [0, 1, 10, 11],
+            &    [0, 1, 10, 11], 
+            2,
+        );
+        test_list(
+            &mut [11, 12, 13, 14, 1, 2, 3, 4],
+            &    [4, 3, 2, 1, 14, 13, 12, 11],
+            4,
+        );
+    }
+}
