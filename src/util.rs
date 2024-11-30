@@ -1,3 +1,9 @@
+// TODO: while this could panic in theory, `N` is
+// almost always `2` or `3`, very rarely `4`.
+pub const fn num_divs<const N: usize>() -> usize {
+    2u32.pow(N as u32) as usize
+}
+
 /// Takes `&mut [T]` and a predicate `P: FnMut(&T) -> bool` and partitions the list according to
 /// the predicate. Swaps elements of the list such that all elements satisfying `P` appear before
 /// any element not satisfying `P`.

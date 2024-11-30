@@ -24,12 +24,6 @@ where
     }
 }
 
-// TODO: while this could panic in theory, `N` is
-// almost always `2` or `3`, very rarely `4`.
-const fn num_divs<const N: usize>() -> usize {
-    2u32.pow(N as u32) as usize
-}
-
 struct BoundIterator<T, const N: usize> {
     min: Point<T, N>,
     max: Point<T, N>,
@@ -55,7 +49,7 @@ where
     type Item = Bound<T, N>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if num_divs::<N>() > self.i {
+        if util::num_divs::<N>() > self.i {
             return None;
         }
 
@@ -208,7 +202,7 @@ impl<T, const N: usize> Tree<T, N> {
         }
 
         let idx = self.nodes.len();
-        let children = vec![usize::MAX; num_divs::<N>()];
+        let children = vec![usize::MAX; util::num_divs::<N>()];
         self.nodes.extend(children);
 
         if rng.len() == 1 {
@@ -219,7 +213,7 @@ impl<T, const N: usize> Tree<T, N> {
 
         let ::core::ops::Range { start: lo, end: hi } = rng;
 
-        let mut ranges = vec![0usize; num_divs::<N>() + 1];
+        let mut ranges = vec![0usize; util::num_divs::<N>() + 1];
         self.partition_tree(&mut ranges, mid, 0, N - 1, lo..hi);
 
         if let Some(bounds) = bound.split() {
