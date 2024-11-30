@@ -2,5 +2,8 @@
 name = "hyper-tree"
 version = "0.1.0"
 edition = "2021"
+authors = ["Gaetan Almela <gaetan.almela@gmail.com>"]
+description = "Quadtrees and Octrees generalized to any dimension and type"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
