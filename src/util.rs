@@ -44,7 +44,7 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+mod partition_tests {
     fn test_list(input: &mut [i32], output: &[i32], exp: usize) {
         let idx = super::partition_in_place(input, |&x| x < 10);
 
