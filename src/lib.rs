@@ -35,6 +35,8 @@ impl<T, const N: usize> Tree<T, N> {
         let n = util::num_divs::<N>().pow(depth);
         let splits = vec![0; n];
 
+        println!("Num splits: {}", n);
+
         Self {
             points,
             splits,
@@ -44,7 +46,7 @@ impl<T, const N: usize> Tree<T, N> {
 
     pub fn new(points: Vec<Point<T, N>>, depth: u32) -> Self
     where
-        T: Mean + Epsilon + Sub<Output = T> + Ord,
+        T: Mean + Epsilon + Sub<Output = T> + Ord + std::fmt::Debug + std::fmt::Display,
     {
         let mut tree = Self::uninit(points, depth);
 
@@ -58,7 +60,7 @@ impl<T, const N: usize> Tree<T, N> {
 
     fn build(&mut self, bound: Bound<T, N>)
     where
-        T: Mean + Epsilon + Sub<Output = T> + Ord,
+        T: Mean + Epsilon + Sub<Output = T> + Ord + std::fmt::Debug + std::fmt::Display,
     {
         let point_range = 0..self.points.len();
         let split_range = 0..self.splits.len();
@@ -77,16 +79,15 @@ impl<T, const N: usize> Tree<T, N> {
         point_range: Range<usize>,
         split_range: Range<usize>,
     ) where
-        T: Mean + Epsilon + Sub<Output = T> + Ord,
+        T: Mean + Epsilon + Sub<Output = T> + Ord + std::fmt::Debug + std::fmt::Display,
     {
         if d == 0 {
             return;
         }
 
-        let s_lo = split_range.start;
+        let lo = split_range.start;
 
-        let mid = bound.center();
-        self.partition_level(mid, 0, point_range, split_range);
+        self.partition_level(&bound, 0, point_range, split_range);
 
         let Some(orthants) = bound.split() else {
             return;
@@ -101,48 +102,87 @@ impl<T, const N: usize> Tree<T, N> {
         let stride = num_divs::<N>().pow(d - 1);
 
         for (i, ort) in orthants.enumerate() {
-            let s_lo = s_lo + stride * i;
-            let s_hi = s_lo + stride * (i + 1);
+            let s_lo = lo + stride * i;
+            let s_hi = lo + stride * (i + 1);
 
             let p_lo = self.splits[s_lo];
             let p_hi = self.splits.get(s_hi).copied().unwrap_or(self.points.len());
 
             self.partition(ort, d - 1, p_lo..p_hi, s_lo..s_hi);
+            println!();
         }
     }
 
     fn partition_level(
         &mut self,
-        mid: Point<T, N>,
+        bound: &Bound<T, N>,
+        // mid: Point<T, N>,
         i: usize,
         point_range: Range<usize>,
         split_range: Range<usize>,
     ) where
-        T: Copy + Ord,
+        T: Mean + Copy + Ord + std::fmt::Debug + std::fmt::Display,
     {
         let (p_lo, p_hi) = (point_range.start, point_range.end);
         let (s_lo, s_hi) = (split_range.start, split_range.end);
 
-        if p_hi - p_lo < 2 {
+        if p_hi - p_lo < 2 || i == N {
             return;
         }
+
+        let left_pad = " ".repeat(3);
+        const POINT_LEN: usize = 6;
+        const SEP_LEN: usize = 2;
+
+        let mid = bound.center();
+        println!("{} center: {:?} axis: {}:", bound, mid, i);
+        println!();
+        println!("{left_pad}{:?}", self.points);
 
         let p_mid =
             util::partition_in_place(&mut self.points[p_lo..p_hi], |p| p.0[i] < mid.0[i]) + p_lo;
 
-        let s_mid = s_lo + ((s_hi - s_lo) / 2);
-        self.splits[s_mid] = p_mid;
+        {
+            let lo_repeat = (p_mid - p_lo) * POINT_LEN + (p_mid - p_lo).saturating_sub(1) * SEP_LEN;
+            let hi_repeat = (p_hi - p_mid) * POINT_LEN
+                + (p_hi - p_mid).saturating_sub(if lo_repeat == 0 { 2 } else { 1 }) * SEP_LEN;
+            let lo_pad = 1 + p_lo * (POINT_LEN + SEP_LEN);
 
-        if i < N {
-            self.partition_level(mid.clone(), i + 1, p_lo..p_mid, s_lo..s_mid);
-            self.partition_level(mid, i + 1, p_mid..p_hi, s_mid..s_hi);
+            println!(
+                "{left_pad}{}{}| {}",
+                " ".repeat(lo_pad),
+                "-".repeat(lo_repeat),
+                "-".repeat(hi_repeat),
+            );
         }
+
+        let s_mid = s_lo + ((s_hi - s_lo) / 2);
+        self.splits[s_mid..s_hi].fill(p_mid);
+
+        println!("{left_pad}{:?}", self.points);
+        println!();
+        println!(
+            "Splits: {:?}, Setting {} at {}..{}",
+            self.splits, p_mid, s_mid, s_hi
+        );
+        println!("----");
+
+        self.partition_level(bound, i + 1, p_lo..p_mid, s_lo..s_mid);
+        self.partition_level(bound, i + 1, p_mid..p_hi, s_mid..s_hi);
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::ops::Range;
+
+    use crate::point::Point;
     use crate::Tree;
+
+    fn range2(xs: Range<i32>, ys: Range<i32>) -> Vec<Point<i32, 2>> {
+        xs.flat_map(|x| ys.clone().map(move |y| [x, y].into()))
+            .collect()
+    }
 
     #[test]
     fn ordered_d1() {
@@ -168,5 +208,47 @@ mod tests {
 
         assert_eq!(tree.points, exp_points);
         assert_eq!(tree.splits, [0, 1, 2, 3]);
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn unordered_d2() {
+        let depth = 2;
+        let points = [
+            (2, 0), (1, 2), (2, 3), (0, 1),
+            (3, 3), (3, 1), (0, 0), (0, 3),
+            (1, 0), (3, 2), (2, 2), (1, 3),
+            (0, 2), (2, 1), (3, 0), (1, 1)
+        ].map(Into::into).to_vec();
+
+        let exp_points = &[
+            (0, 0), (0, 3), (0, 2), (0, 1),
+            (3, 0), (2, 0), (1, 0), (1, 1),
+            (1, 2), (1, 3), (2, 1), (3, 1),
+            (3, 2), (2, 2), (3, 3), (2, 3)
+        ].map(Into::into);
+
+        let tree = Tree::new(points, depth);
+
+        assert_eq!(tree.points, exp_points);
+        panic!()
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn unordered_d3() {
+        let depth = 3;
+        let points = range2(0..5, 0..5);
+
+        let exp_points = &[
+            (0, 0), (0, 3), (0, 2), (0, 1),
+            (3, 0), (2, 0), (1, 0), (1, 1),
+            (1, 2), (1, 3), (2, 1), (3, 1),
+            (2, 2), (2, 3), (3, 2), (3, 3)
+        ].map(Into::into);
+
+        let tree = Tree::new(points, depth);
+
+        assert_eq!(tree.points, exp_points);
     }
 }

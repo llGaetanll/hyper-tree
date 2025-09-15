@@ -1,5 +1,19 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
+use std::fmt::Debug;
+
+#[derive(Clone, PartialEq, Eq)]
 pub struct Point<T, const N: usize>(pub [T; N]);
+
+impl<T: Debug, const N: usize> Debug for Point<T, N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut tuple = f.debug_tuple("");
+
+        for element in &self.0 {
+            tuple.field(element);
+        }
+
+        tuple.finish()
+    }
+}
 
 impl<T, const N: usize> From<[T; N]> for Point<T, N> {
     fn from(value: [T; N]) -> Self {

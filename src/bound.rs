@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::traits;
 use crate::util;
 use crate::Point;
@@ -82,6 +84,12 @@ impl<T, const N: usize> Bound<T, N> {
             .iter()
             .zip(&self.min.0)
             .any(|(&t1, &t2)| t1.sub(t2) <= T::EPSILON)
+    }
+}
+
+impl<T: Display + std::fmt::Debug, const N: usize> Display for Bound<T, N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Bound[{:?}, {:?}]", self.min, self.max)
     }
 }
 
