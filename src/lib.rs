@@ -1,136 +1,172 @@
 #![deny(unsafe_code)]
 
 mod bound;
+mod point;
 mod traits;
 mod util;
 
+use core::cmp::Ord;
+use core::marker::Copy;
+use core::ops::Range;
+use core::ops::Sub;
+
 use bound::Bound;
 
-#[derive(Clone)]
-pub struct Point<T, const N: usize>(pub [T; N]);
+use crate::point::Point;
+use crate::traits::Epsilon;
+use crate::traits::Mean;
+use crate::util::num_divs;
 
 pub struct Tree<T, const N: usize> {
-    bound: Bound<T, N>,
-    root: usize,
-    nodes: Vec<usize>,
     points: Vec<Point<T, N>>,
+    splits: Vec<usize>,
+    depth: u32,
 }
 
 pub type QuadTree<T> = Tree<T, 2>;
 pub type OcTree<T> = Tree<T, 3>;
 
 impl<T, const N: usize> Tree<T, N> {
-    fn uninit(points: Vec<Point<T, N>>) -> Option<Self>
+    fn uninit(points: Vec<Point<T, N>>, depth: u32) -> Self
     where
-        T: ::core::cmp::Ord + ::core::marker::Copy,
+        T: Ord + Copy,
     {
-        let bound = Bound::from_points(&points)?;
+        // n = (2^N)^d
+        let n = util::num_divs::<N>().pow(depth);
+        let splits = vec![0; n];
 
-        Some(Self {
-            bound,
-            root: usize::MAX,
-            nodes: vec![],
+        Self {
             points,
-        })
+            splits,
+            depth,
+        }
     }
 
-    pub fn new(points: Vec<Point<T, N>>) -> Option<Self>
+    pub fn new(points: Vec<Point<T, N>>, depth: u32) -> Self
     where
-        T: traits::Mean
-            + traits::Epsilon
-            + ::core::ops::Sub<Output = T>
-            + ::core::cmp::Ord
-            + ::core::fmt::Debug,
+        T: Mean + Epsilon + Sub<Output = T> + Ord,
     {
-        let mut tree = Self::uninit(points)?;
+        let mut tree = Self::uninit(points, depth);
 
-        tree.root = tree.build(tree.bound.clone(), 0..tree.points.len());
+        // Build the tree if more than one point is provided
+        if let Some(bound) = Bound::from_points(&tree.points) {
+            tree.build(bound);
+        }
 
-        Some(tree)
+        tree
     }
 
-    fn build(&mut self, bound: Bound<T, N>, rng: ::core::ops::Range<usize>) -> usize
+    fn build(&mut self, bound: Bound<T, N>)
     where
-        T: traits::Mean
-            + traits::Epsilon
-            + ::core::ops::Sub<Output = T>
-            + ::core::cmp::Ord
-            + ::core::fmt::Debug,
+        T: Mean + Epsilon + Sub<Output = T> + Ord,
     {
-        if rng.is_empty() {
-            return usize::MAX;
-        }
+        let point_range = 0..self.points.len();
+        let split_range = 0..self.splits.len();
 
-        let idx = self.nodes.len();
-        let children = vec![usize::MAX; util::num_divs::<N>()];
-        self.nodes.extend(children);
-
-        if rng.len() == 1 {
-            return idx;
-        }
-
-        let mid = self.bound.center();
-
-        let ::core::ops::Range { start: lo, end: hi } = rng;
-
-        let mut ranges = vec![0usize; util::num_divs::<N>() + 1];
-        self.partition_tree(&mut ranges, mid, 0, N - 1, lo..hi);
-
-        if let Some(bounds) = bound.split() {
-            for (i, (bound, range)) in bounds.zip(ranges.windows(2)).enumerate() {
-                let &[lo, hi] = range else { unreachable!() };
-                self.nodes[idx + i] = self.build(bound, lo..hi);
-            }
-        }
-
-        idx
-    }
-
-    fn partition_tree(
-        &mut self,
-        rngs: &mut [usize],
-        mid: Point<T, N>,
-        rng_lo: usize,
-        i: usize,
-        rng: ::core::ops::Range<usize>,
-    ) where
-        T: ::core::marker::Copy + ::core::cmp::Ord,
-    {
-        let ::core::ops::Range { start: lo, end: hi } = rng;
-        let m = util::partition_in_place(&mut self.points[lo..hi], |p| p.0[i] < mid.0[i]);
-
-        rngs[rng_lo + i / 2] = m;
-
-        if i == 0 {
+        if point_range.len() < 2 {
             return;
         }
 
-        // lo <= .. <= m <= .. <= hi
-        self.partition_tree(rngs, mid.clone(), rng_lo, i - 1, lo..m);
-        self.partition_tree(rngs, mid, rng_lo + i / 2, i - 1, m..hi);
+        self.partition(bound, self.depth, point_range, split_range);
+    }
+
+    fn partition(
+        &mut self,
+        bound: Bound<T, N>,
+        d: u32,
+        point_range: Range<usize>,
+        split_range: Range<usize>,
+    ) where
+        T: Mean + Epsilon + Sub<Output = T> + Ord,
+    {
+        if d == 0 {
+            return;
+        }
+
+        let s_lo = split_range.start;
+
+        let mid = bound.center();
+        self.partition_level(mid, 0, point_range, split_range);
+
+        let Some(orthants) = bound.split() else {
+            return;
+        };
+
+        // Stride into the splits array.
+        //
+        // If the depth is 1, splits of interest are next to each other
+        // If the depth is 2, between each split of interest is 2^N splits for the layer below us
+        // If the depth is 3, each of *those* splits contains 2^N splits between *them*.
+        // etc...
+        let stride = num_divs::<N>().pow(d - 1);
+
+        for (i, ort) in orthants.enumerate() {
+            let s_lo = s_lo + stride * i;
+            let s_hi = s_lo + stride * (i + 1);
+
+            let p_lo = self.splits[s_lo];
+            let p_hi = self.splits.get(s_hi).copied().unwrap_or(self.points.len());
+
+            self.partition(ort, d - 1, p_lo..p_hi, s_lo..s_hi);
+        }
+    }
+
+    fn partition_level(
+        &mut self,
+        mid: Point<T, N>,
+        i: usize,
+        point_range: Range<usize>,
+        split_range: Range<usize>,
+    ) where
+        T: Copy + Ord,
+    {
+        let (p_lo, p_hi) = (point_range.start, point_range.end);
+        let (s_lo, s_hi) = (split_range.start, split_range.end);
+
+        if p_hi - p_lo < 2 {
+            return;
+        }
+
+        let p_mid =
+            util::partition_in_place(&mut self.points[p_lo..p_hi], |p| p.0[i] < mid.0[i]) + p_lo;
+
+        let s_mid = s_lo + ((s_hi - s_lo) / 2);
+        self.splits[s_mid] = p_mid;
+
+        if i < N {
+            self.partition_level(mid.clone(), i + 1, p_lo..p_mid, s_lo..s_mid);
+            self.partition_level(mid, i + 1, p_mid..p_hi, s_mid..s_hi);
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::ops::Range;
+    use crate::Tree;
 
-    use super::Point;
-    use super::Tree;
+    #[test]
+    fn ordered_d1() {
+        let points = [[0, 0], [0, 2], [2, 0], [2, 2]].map(Into::into).to_vec();
+        let depth = 1;
 
-    fn p2s(ps: &[[i32; 2]]) -> Vec<Point<i32, 2>> {
-        ps.iter().map(|&p| Point(p)).collect()
-    }
+        let exp_points = &[[0, 0], [0, 2], [2, 0], [2, 2]].map(Into::into);
 
-    fn range2(xs: Range<i32>, ys: Range<i32>) -> Vec<Point<i32, 2>> {
-        xs.flat_map(|x| ys.clone().map(move |y| Point([x, y])))
-            .collect()
+        let tree = Tree::new(points, depth);
+
+        assert_eq!(tree.points, exp_points);
+        assert_eq!(tree.splits, [0, 1, 2, 3]);
     }
 
     #[test]
-    fn no_panic() {
-        Tree::new(p2s(&[[0, 0]]));
-        Tree::new(p2s(&[[0, 0], [0, 1], [1, 0], [1, 1]]));
-        Tree::new(range2(-5..5, -5..5)).unwrap();
+    fn unordered_d1() {
+        let points = [[0, 2], [2, 2], [2, 0], [0, 0]].map(Into::into).to_vec();
+        let depth = 1;
+
+        let exp_points = &[[0, 0], [0, 2], [2, 0], [2, 2]].map(Into::into);
+
+        let tree = Tree::new(points, depth);
+
+        assert_eq!(tree.points, exp_points);
+        assert_eq!(tree.splits, [0, 1, 2, 3]);
     }
 }

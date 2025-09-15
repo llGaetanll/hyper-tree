@@ -2,7 +2,7 @@ use crate::traits;
 use crate::util;
 use crate::Point;
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Bound<T, const N: usize> {
     pub min: Point<T, N>,
     pub max: Point<T, N>,
@@ -13,56 +13,56 @@ impl<T, const N: usize> Bound<T, N> {
     where
         T: ::core::cmp::Ord + ::core::marker::Copy,
     {
-        Self::from_points(&[p1, p2]).unwrap() // won't fail
+        let Some(bound) = Self::from_points(&[p1, p2]) else {
+            unreachable!()
+        };
+
+        bound
     }
 
     pub fn from_points(points: &[Point<T, N>]) -> Option<Self>
     where
         T: ::core::cmp::Ord + ::core::marker::Copy,
     {
-        if let [first, points @ ..] = points {
-            let mut bound = Bound {
-                min: first.clone(),
-                max: first.clone(),
-            };
+        match points {
+            [] | [_] => None,
+            [point, rest @ ..] => {
+                let mut bound = Bound {
+                    min: point.clone(),
+                    max: point.clone(),
+                };
 
-            for point in points {
-                bound |= point;
+                for point in rest {
+                    bound |= point;
+                }
+
+                Some(bound)
             }
-
-            Some(bound)
-        } else {
-            None
         }
     }
 
     pub fn center(&self) -> Point<T, N>
     where
-        T: traits::Mean + ::core::fmt::Debug,
+        T: traits::Mean,
     {
-        // Note: `Debug` is necessary because of `unwrap` (which will never panic). We could relax
-        // this bound by using `unwrap_unchecked` but I deemed it more important to not use unsafe
-        // code, since all reasonable `T` is `Debug` anyway.
-        Point(
-            self.min
-                .0
-                .iter()
-                .zip(&self.max.0)
-                .map(|(&t1, &t2)| t1.mean(t2))
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
-        )
+        let Ok(point) = self
+            .min
+            .0
+            .iter()
+            .zip(&self.max.0)
+            .map(|(&t1, &t2)| t1.mean(t2))
+            .collect::<Vec<_>>()
+            .try_into()
+        else {
+            unreachable!()
+        };
+
+        Point(point)
     }
 
-    // TODO: Instead of `Option`, return empty iter?
     pub fn split(&self) -> Option<impl Iterator<Item = Self>>
     where
-        T: traits::Mean
-            + traits::Epsilon
-            + ::core::ops::Sub<Output = T>
-            + ::core::cmp::Ord
-            + ::core::fmt::Debug,
+        T: traits::Mean + traits::Epsilon + ::core::ops::Sub<Output = T> + ::core::cmp::Ord,
     {
         if self.minimal() {
             None
@@ -99,8 +99,8 @@ where
 
 struct BoundIterator<T, const N: usize> {
     min: Point<T, N>,
-    max: Point<T, N>,
     mid: Point<T, N>,
+    max: Point<T, N>,
     i: usize,
 }
 
@@ -122,7 +122,7 @@ where
     type Item = Bound<T, N>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if util::num_divs::<N>() > self.i {
+        if self.i == util::num_divs::<N>() {
             return None;
         }
 
@@ -131,9 +131,9 @@ where
         let mut j = self.i;
         for k in 0..N {
             p1.0[k] = if j & 1 == 1 {
-                self.min.0[k]
-            } else {
                 self.max.0[k]
+            } else {
+                self.min.0[k]
             };
 
             j >>= 1;
@@ -142,5 +142,27 @@ where
         self.i += 1;
 
         Some(Bound::new(p1, self.mid.clone()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::bound::Bound;
+    use crate::bound::BoundIterator;
+
+    #[test]
+    fn test_bound_iterator() {
+        let min = (0, 0).into();
+        let mid = (1, 1).into();
+        let max = (2, 2).into();
+
+        let mut iter = BoundIterator::new(min, mid, max);
+
+        assert_eq!(iter.next(), Some(Bound::new((0, 0).into(), (1, 1).into())));
+        assert_eq!(iter.next(), Some(Bound::new((2, 0).into(), (1, 1).into())));
+        assert_eq!(iter.next(), Some(Bound::new((0, 2).into(), (1, 1).into())));
+        assert_eq!(iter.next(), Some(Bound::new((2, 2).into(), (1, 1).into())));
+
+        assert_eq!(iter.next(), None);
     }
 }
