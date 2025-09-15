@@ -35,8 +35,6 @@ impl<T, const N: usize> Tree<T, N> {
         let n = util::num_divs::<N>().pow(depth);
         let splits = vec![0; n];
 
-        println!("Num splits: {}", n);
-
         Self {
             points,
             splits,
@@ -46,7 +44,7 @@ impl<T, const N: usize> Tree<T, N> {
 
     pub fn new(points: Vec<Point<T, N>>, depth: u32) -> Self
     where
-        T: Mean + Epsilon + Sub<Output = T> + Ord + std::fmt::Debug + std::fmt::Display,
+        T: Mean + Epsilon + Sub<Output = T> + Ord,
     {
         let mut tree = Self::uninit(points, depth);
 
@@ -60,7 +58,7 @@ impl<T, const N: usize> Tree<T, N> {
 
     fn build(&mut self, bound: Bound<T, N>)
     where
-        T: Mean + Epsilon + Sub<Output = T> + Ord + std::fmt::Debug + std::fmt::Display,
+        T: Mean + Epsilon + Sub<Output = T> + Ord,
     {
         let point_range = 0..self.points.len();
         let split_range = 0..self.splits.len();
@@ -79,7 +77,7 @@ impl<T, const N: usize> Tree<T, N> {
         point_range: Range<usize>,
         split_range: Range<usize>,
     ) where
-        T: Mean + Epsilon + Sub<Output = T> + Ord + std::fmt::Debug + std::fmt::Display,
+        T: Mean + Epsilon + Sub<Output = T> + Ord,
     {
         if d == 0 {
             return;
@@ -87,7 +85,8 @@ impl<T, const N: usize> Tree<T, N> {
 
         let lo = split_range.start;
 
-        self.partition_level(&bound, 0, point_range, split_range);
+        let mid = bound.center();
+        self.partition_level(mid, 0, point_range, split_range);
 
         let Some(orthants) = bound.split() else {
             return;
@@ -109,19 +108,17 @@ impl<T, const N: usize> Tree<T, N> {
             let p_hi = self.splits.get(s_hi).copied().unwrap_or(self.points.len());
 
             self.partition(ort, d - 1, p_lo..p_hi, s_lo..s_hi);
-            println!();
         }
     }
 
     fn partition_level(
         &mut self,
-        bound: &Bound<T, N>,
-        // mid: Point<T, N>,
+        mid: Point<T, N>,
         i: usize,
         point_range: Range<usize>,
         split_range: Range<usize>,
     ) where
-        T: Mean + Copy + Ord + std::fmt::Debug + std::fmt::Display,
+        T: Clone + Ord,
     {
         let (p_lo, p_hi) = (point_range.start, point_range.end);
         let (s_lo, s_hi) = (split_range.start, split_range.end);
@@ -130,45 +127,14 @@ impl<T, const N: usize> Tree<T, N> {
             return;
         }
 
-        let left_pad = " ".repeat(3);
-        const POINT_LEN: usize = 6;
-        const SEP_LEN: usize = 2;
-
-        let mid = bound.center();
-        println!("{} center: {:?} axis: {}:", bound, mid, i);
-        println!();
-        println!("{left_pad}{:?}", self.points);
-
         let p_mid =
             util::partition_in_place(&mut self.points[p_lo..p_hi], |p| p.0[i] < mid.0[i]) + p_lo;
-
-        {
-            let lo_repeat = (p_mid - p_lo) * POINT_LEN + (p_mid - p_lo).saturating_sub(1) * SEP_LEN;
-            let hi_repeat = (p_hi - p_mid) * POINT_LEN
-                + (p_hi - p_mid).saturating_sub(if lo_repeat == 0 { 2 } else { 1 }) * SEP_LEN;
-            let lo_pad = 1 + p_lo * (POINT_LEN + SEP_LEN);
-
-            println!(
-                "{left_pad}{}{}| {}",
-                " ".repeat(lo_pad),
-                "-".repeat(lo_repeat),
-                "-".repeat(hi_repeat),
-            );
-        }
 
         let s_mid = s_lo + ((s_hi - s_lo) / 2);
         self.splits[s_mid..s_hi].fill(p_mid);
 
-        println!("{left_pad}{:?}", self.points);
-        println!();
-        println!(
-            "Splits: {:?}, Setting {} at {}..{}",
-            self.splits, p_mid, s_mid, s_hi
-        );
-        println!("----");
-
-        self.partition_level(bound, i + 1, p_lo..p_mid, s_lo..s_mid);
-        self.partition_level(bound, i + 1, p_mid..p_hi, s_mid..s_hi);
+        self.partition_level(mid.clone(), i + 1, p_lo..p_mid, s_lo..s_mid);
+        self.partition_level(mid, i + 1, p_mid..p_hi, s_mid..s_hi);
     }
 }
 
@@ -231,7 +197,6 @@ mod tests {
         let tree = Tree::new(points, depth);
 
         assert_eq!(tree.points, exp_points);
-        panic!()
     }
 
     #[test]
@@ -241,10 +206,11 @@ mod tests {
         let points = range2(0..5, 0..5);
 
         let exp_points = &[
-            (0, 0), (0, 3), (0, 2), (0, 1),
-            (3, 0), (2, 0), (1, 0), (1, 1),
-            (1, 2), (1, 3), (2, 1), (3, 1),
-            (2, 2), (2, 3), (3, 2), (3, 3)
+            (0, 0), (0, 1), (1, 0), (1, 1), (0, 4),
+            (0, 3), (0, 2), (1, 2), (1, 3), (1, 4),
+            (2, 0), (2, 1), (4, 1), (4, 0), (3, 1),
+            (3, 0), (2, 2), (3, 2), (3, 3), (2, 3),
+            (3, 4), (2, 4), (4, 2), (4, 3), (4, 4)
         ].map(Into::into);
 
         let tree = Tree::new(points, depth);
